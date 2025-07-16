@@ -1,1 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Checkers Game</title>
+  <style>
+    body {
+      background: #333;
+      font-family: Arial, sans-serif;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
 
+    h1 {
+      margin-bottom: 10px;
+    }
+
+    #board {
+      display: grid;
+      grid-template-columns: repeat(8, 60px);
+      grid-template-rows: repeat(8, 60px);
+      border: 4px solid #fff;
+    }
+
+    .cell {
+      width: 60px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .black {
+      background-color: #444;
+    }
+
+    .white {
+      background-color: #eee;
+    }
+
+    .piece {
+      width: 45px;
+      height: 45px;
+      border-radius: 50%;
+      box-shadow: 0 0 5px rgba(0,0,0,0.5);
+      cursor: pointer;
+    }
+
+    .red { background: crimson; }
+    .black-piece { background: black; }
+
+    .king {
+      border: 2px solid gold;
+    }
+
+    .highlight {
+      outline: 3px solid yellow;
+    }
+
+    #status {
+      margin-top: 15px;
+    }
+
+    #reset {
+      margin-top: 10px;
+      padding: 6px 12px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Checkers</h1>
+  <div id="board"></div>
+  <div id="status">Current Turn: Red</div>
+  <button id="reset">Restart Game</button>
+
+  <script>
+    const board = document.getElementById('board');
+    const status = document.getElementById('status');
+    let selected = null;
+    let currentPlayer = 'red';
+    const size = 8;
+    let boardArray = [];
+
+    function createBoard() {
+      board.innerHTML = '';
+      boardArray = [];
+
+      for (let row = 0; row < size; row++) {
+        boardArray[row] = [];
+
+        for (let col = 0; col < size; col++) {
+          const cell = document.createElement('div');
+          cell.classList.add('cell');
+          cell.classList.add((row + col) % 2 === 0 ? 'white' : 'black');
+          cell.dataset.row = row;
+          cell.dataset.col = col;
+          board.appendChild(cell);
+
+          // Initialize pieces
+          let piece = null;
+          if ((row + col) % 2 !== 0) {
+            if (row < 3) piece = { color: 'black', king: false };
+            if (row > 4) piece = { color: 'red', king: false };
+          }
+
+          boardArray[row][col] = piece;
+          renderCell(cell, piece);
+
+          cell.addEventListener('click', () => handleClick(row, col));
+        }
+      }
+    }
+
+    function renderCell(cell, piece) {
+      cell.innerHTML = '';
+      if (piece) {
+        const div = document.createElement('div');
+        div.classList.add('piece', piece.color === 'red' ? 'red' : 'black-piece');
+        if (piece.king) div.classList.add('king');
+        cell.appendChild(div);
+      }
+    }
+
+    function handleClick(row, col) {
+      const piece = boardArray[row][col];
+
+      if (selected) {
+        if (tryMove(selected.row, selected.col, row, col)) {
+          selected = null;
+          updateBoard();
+          return;
+        }
+        selected = null;
+        updateBoard();
+      } else if (piece && piece.color === currentPlayer) {
+        selected = { row, col };
+        highlightMoves(row, col);
+      }
+    }
+
+    function updateBoard() {
+      for (let row = 0; row < size; row++) {
+        for (let col = 0; col < size; col++) {
+          const index = row * size + col;
+          const cell = board.children[index];
+          cell.classList.remove('highlight');
+          renderCell(cell, boardArray[row][col]);
+        }
+      }
+    }
+
+    function highlightMoves(row, col) {
+      updateBoard();
+      const moves = getValidMoves(row, col);
+      for (let move of moves) {
+        const cell = board.children[move.to.row * size + move.to.col];
+        cell.classList.add('highlight');
+      }
+    }
+
+    function getValidMoves(row, col) {
+      const piece = boardArray[row][col];
+      if (!piece) return [];
+
+      const directions = [];
+      if (piece.color === 'red' || piece.king) directions.push([-1, -1], [-1, 1]);
+      if (piece.color === 'black' || piece.king) directions.push([1, -1], [1, 1]);
+
+      const moves = [];
+
+      for (let [dr, dc] of directions) {
+        const r = row + dr;
+        const c = col + dc;
+
+        if (inBounds(r, c) && !boardArray[r][c]) {
+          moves.push({ to: { row: r, col: c }, capture: false });
+        } else if (
+          inBounds(r + dr, c + dc) &&
+          boardArray[r][c] &&
+          boardArray[r][c].color !== piece.color &&
+          !boardArray[r + dr][c + dc]
+        ) {
+          moves.push({ to: { row: r + dr, col: c + dc }, capture: { row: r, col: c } });
+        }
+      }
+
+      return moves;
+    }
+
+    function tryMove(fromRow, fromCol, toRow, toCol) {
+      const moves = getValidMoves(fromRow, fromCol);
+      for (let move of moves) {
+        if (move.to.row === toRow && move.to.col === toCol) {
+          const piece = boardArray[fromRow][fromCol];
+          boardArray[toRow][toCol] = piece;
+          boardArray[fromRow][fromCol] = null;
+
+          if (move.capture) {
+            boardArray[move.capture.row][move.capture.col] = null;
+          }
+
+          // King if reaching the last row
+          if ((piece.color === 'red' && toRow === 0) || (piece.color === 'black' && toRow === size - 1)) {
+            piece.king = true;
+          }
+
+          // Check for more captures
+          if (move.capture && getValidMoves(toRow, toCol).some(m => m.capture)) {
+            selected = { row: toRow, col: toCol };
+            highlightMoves(toRow, toCol);
+            return false; // don't switch turns yet
+          }
+
+          currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
+          status.textContent = `Current Turn: ${capitalize(currentPlayer)}`;
+          checkWin();
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function inBounds(r, c) {
+      return r >= 0 && r < size && c >= 0 && c < size;
+    }
+
+    function checkWin() {
+      let redLeft = 0;
+      let blackLeft = 0;
+      for (let row = 0; row < size; row++) {
+        for (let col = 0; col < size; col++) {
+          const piece = boardArray[row][col];
+          if (piece) {
+            if (piece.color === 'red') redLeft++;
+            if (piece.color === 'black') blackLeft++;
+          }
+        }
+      }
+
+      if (redLeft === 0 || blackLeft === 0) {
+        status.textContent = redLeft === 0 ? 'Black Wins!' : 'Red Wins!';
+        disableBoard();
+      }
+    }
+
+    function disableBoard() {
+      for (let cell of board.children) {
+        cell.replaceWith(cell.cloneNode(true));
+      }
+    }
+
+    function capitalize(str) {
+      return str[0].toUpperCase() + str.slice(1);
+    }
+
+    document.getElementById('reset').addEventListener('click', () => {
+      currentPlayer = 'red';
+      status.textContent = 'Current Turn: Red';
+      createBoard();
+    });
+
+    createBoard();
+  </script>
+</body>
+</html>
